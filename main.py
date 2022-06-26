@@ -1,16 +1,25 @@
-# This is a sample Python script.
+import argparse
+from utils.data_utils import *
 
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+# ------------------------------------------------
+# Parameter Initialisation
+# ------------------------------------------------
 
+parser = argparse.ArgumentParser(description='Run Prediction Script.')
+parser.add_argument('path', type=str, default='/home/phil/Documents/Studium/Courses/CIL/Project',
+                    help='path to training data.')
+parser.add_argument('--debug', action='store_true',
+                    help='set --debug flag for lower computational impact.')
+args = parser.parse_args()
+path = args.path
 
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
-
-
-# Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    print_hi('PyCharm')
+    mat = read_data(path=f'{path}/data_train.csv')
+    print(f'Sparsity: {np.count_nonzero(np.isnan(mat)) / (mat.shape[0]*mat.shape[1])}% NaNs in the data')
 
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+    # Reduce number of users (10% of the data)
+    if args.debug:
+        mat = mat[, :100]
+
+    # Calculating affinities
+    # TODO: Implement in methods
