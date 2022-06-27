@@ -46,3 +46,10 @@ def prediction_data(matrix, num_items=10000, num_users=1000, out_path='./'):
 # initial imputation is a TODO.
 def initial_impute():
     pass
+
+
+def mean_user(mat):
+    item_means = np.mean(mat, axis=1)
+    for i in range(item_means.shape[0]):
+        
+    return item_means
