@@ -51,5 +51,5 @@ def initial_impute():
 def mean_user(mat):
     item_means = np.mean(mat, axis=1)
     for i in range(item_means.shape[0]):
-        
+        pass
     return item_means
