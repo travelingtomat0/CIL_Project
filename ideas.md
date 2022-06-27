@@ -8,6 +8,10 @@
 
 - Data Augmentation to help with generalisation
 - Centering per item or user
+- Feature engineering?
+  - Users with little data are imputed with eg. 3? Or different to those with lots of data?
+  - Do users with no data exist?
+- 
 
 ## Own Baselines
 
