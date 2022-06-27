@@ -48,10 +48,14 @@ if __name__ == '__main__':
         kaka(mat)
     elif os.path.exists("its_me.txt"):
         import magic
+        from kakawasser import kaka
+        from scipy.spatial.distance import cosine
         initial_impute = mean_user(mat).T
-        magic_operator = magic.MAGIC()
-        X_magic = magic_operator.fit_transform(initial_impute).T
-        print(np.round(X_magic))
+        magic_operator = magic.MAGIC(knn=30, knn_dist=cosine)
+        X_magic = np.round(magic_operator.fit_transform(initial_impute))
+        kaka(X_magic)
+        df = prediction_data(X_magic.astype(int))
+        df.to_csv('philips_prediction.csv')
     
     # Calculating affinities
 

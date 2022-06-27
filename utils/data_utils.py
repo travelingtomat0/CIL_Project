@@ -19,6 +19,8 @@ def read_data(path='./', out_shape=(1000, 10000)):
     return out_matrix
 
 
+# get the prediction id's that are in question from the sample csv
+# returns tuples (item_id, user_id)
 def in_question(path):
     df = pd.read_csv(path)
     res = []
@@ -30,15 +32,17 @@ def in_question(path):
     return res
 
 
-def prediction_data(matrix, num_items=10000, num_users=1000, out_path='./'):
+# Input shape of matrix: [num_users, num_items]
+def prediction_data(matrix, num_items=10000, num_users=1000, out_path='prediction.csv'):
+    assert matrix.shape[0] == 10000, f"Expected shape (10000, 1000), got: {matrix.shape}"
+    ids = in_question('sampleSubmission.csv')
     id_list = []
     pred_list = []
-    for c in range(num_users):
-        for i in range(num_items):
-            # CAUTION: Add 1 because users & items start at 1, not 0.
-            id_list.append(f'r{i+1}_c{c+1}')
-            pred_list.append(matrix[num_items][num_users])
+    for (item, user) in ids:
+        id_list.append(f'r{user+1}_c{item+1}')
+        pred_list.append(int(matrix[user][item]))
     df = pd.DataFrame(np.array([id_list, pred_list]).T, columns=['Id', 'Prediction'])
+    df.to_csv(out_path, index=False)
     return df
 
 
@@ -50,9 +54,6 @@ def initial_impute():
 
 def mean_user(mat):
     item_means = np.nanmean(mat, axis=1)
-    print(item_means.shape)
-    print(mat.shape)
-    print(mat)
     for i in range(item_means.shape[0]):
         mat[i, :] = np.nan_to_num(x=mat[i, :], nan=round(item_means[i]))
     return mat
