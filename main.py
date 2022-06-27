@@ -52,6 +52,10 @@ if __name__ == '__main__':
     print(f"Number of users with <{thresh_num_ratings_user} recorded ratings: {user_count}")
     print(f"Number of items with <{thresh_num_ratings_item} recorded ratings: {item_count}")
 
+    if os.path.exists("wixxpisse123.txt"):
+        from kakawasser import kaka
+        kaka(mat)
+    
     # Calculating affinities
 
     # TODO: Implement in methods
