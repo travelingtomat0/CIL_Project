@@ -1,16 +1,7 @@
-import argparse
 import os
 
-import torch
 import pickle
-# from scipy.spatial.distance import pdist
-from sklearn.metrics.pairwise import nan_euclidean_distances
-# from scanpy.external.pp import magic
-# from scanpy.external.pp import dca
-import magic
-from anndata import AnnData
 
-from utils.dataset import InputDataset
 from utils.data_utils import *
 
 
@@ -55,6 +46,12 @@ if __name__ == '__main__':
     if os.path.exists("wixxpisse123.txt"):
         from kakawasser import kaka
         kaka(mat)
+    elif os.path.exists("its_me.txt"):
+        import magic
+        initial_impute = mean_user(mat).T
+        magic_operator = magic.MAGIC()
+        X_magic = magic_operator.fit_transform(initial_impute).T
+        print(np.round(X_magic))
     
     # Calculating affinities
 

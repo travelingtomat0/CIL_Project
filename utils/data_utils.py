@@ -49,7 +49,10 @@ def initial_impute():
 
 
 def mean_user(mat):
-    item_means = np.mean(mat, axis=1)
+    item_means = np.nanmean(mat, axis=1)
+    print(item_means.shape)
+    print(mat.shape)
+    print(mat)
     for i in range(item_means.shape[0]):
-        pass
-    return item_means
+        mat[i, :] = np.nan_to_num(x=mat[i, :], nan=round(item_means[i]))
+    return mat
