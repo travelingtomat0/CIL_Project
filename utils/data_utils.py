@@ -40,7 +40,8 @@ def prediction_data(matrix, num_items=10000, num_users=1000, out_path='predictio
     pred_list = []
     for (item, user) in ids:
         id_list.append(f'r{user+1}_c{item+1}')
-        pred_list.append(int(matrix[user][item]))
+        #pred_list.append(int(matrix[user][item]))
+        pred_list.append(matrix[user][item])
     df = pd.DataFrame(np.array([id_list, pred_list]).T, columns=['Id', 'Prediction'])
     df.to_csv(out_path, index=False)
     return df
@@ -57,3 +58,12 @@ def mean_user(mat):
     for i in range(item_means.shape[0]):
         mat[i, :] = np.nan_to_num(x=mat[i, :], nan=round(item_means[i]))
     return mat
+
+
+# input dimension [num_users, num_items]
+def center_user(mat):
+    assert mat.shape[0] == 10000, f"Expected shape (10000, 1000), got: {mat.shape}"
+    user_means = np.nanmean(mat, axis=1)
+    for i in range(mat.shape[0]):
+        mat[i, :] = mat[i, :] - user_means[i]
+    return user_means, mat
