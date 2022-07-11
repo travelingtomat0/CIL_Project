@@ -8,16 +8,44 @@ def read_data(path='./', out_shape=(1000, 10000)):
     df = pd.read_csv(path)
     out_matrix = np.empty(out_shape)
     out_matrix[:] = np.nan
+
+    non_nan_user = []
+    non_nan_item = []
     # Build matrix for user preferences
     # Output matrix must be of dimension (10.000, 1.000)
     for i in range(df.shape[0]):
         user, item = df['Id'][i].split('_')
         user = int(user[1:])-1
+        non_nan_user.append(user)
         item = int(item[1:])-1
+        non_nan_item.append(item)
         # Catch erroneous user / item numbers?
         out_matrix[item, user] = df['Prediction'][i]
-    return out_matrix
+    return out_matrix, non_nan_user, non_nan_item
 
+
+def read_train_val(path='./', out_shape=(1000, 10000), train_frac=0.8, val_frac=0.1):
+    df = pd.read_csv(path)
+    t_matrix = np.empty(out_shape)
+    v_matrix = np.empty(out_shape)
+    t_matrix[:] = np.nan
+    v_matrix[:] = np.nan
+    mask = np.random.rand(df.shape[0]) < 0.9
+
+    for i in range(df.shape[0]):
+        user, item = df['Id'][i].split('_')
+        user = int(user[1:])-1
+        item = int(item[1:])-1
+        if mask[i]:
+            t_matrix[item, user] = df['Prediction'][i]
+        else:
+            t_matrix[item, user] = df['Prediction'][i]
+        # Catch erroneous user / item numbers?
+    return t_matrix, v_matrix
+
+
+def mask_matrix(mat, non_nan_users, non_nan_items):
+    pass
 
 # get the prediction id's that are in question from the sample csv
 # returns tuples (item_id, user_id)

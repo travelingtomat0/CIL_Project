@@ -41,16 +41,14 @@ class ModelWrapper(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
 
     def training_step(self, batch, batch_idx):
-        x = batch[0][0]
-        y = batch[1][0]
+        x = batch[0]
+        y = batch[1]
         y_hat = self._model(x)
-        #print(y_hat.shape)
         return self.loss(y_hat.float(), y.float())
 
     def validation_step(self, batch, batch_idx):
-        x = batch[0][0]
-        y = batch[1][0]
-        #print(y)
+        x = batch[0]
+        y = batch[1]
         y_hat = self._model(x)
         return self.loss(y_hat.float(), y.float())
         # print(y_hat)

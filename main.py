@@ -24,6 +24,10 @@ if __name__ == '__main__':
 
     # data, val_data = torch.utils.data.random_split(InputDataset(mat), [6000, 4000])
 
+    t_matrix, v_matrix = read_train_val(path=f'data_train.csv')
+
+    print(t_matrix.shape, v_matrix.shape)
+
     # Information Gathering
     # Threshold here: 1% of the data.
     thresh_num_ratings_user = 10 # Different for users and items?
@@ -59,11 +63,14 @@ if __name__ == '__main__':
 
         # TODO: Look at initial impute! Is there a better method?
 
+        kaka(mat.T, 'initial_matrix_vis.png')
+
+        initial_mat = mat.copy()
         initial_impute = mean_user(mat).T
-        svd = TruncatedSVD(n_components=10, n_iter=7, random_state=42)
+        svd = TruncatedSVD(n_components=20, n_iter=7, random_state=42)
         X_new = svd.fit_transform(initial_impute)
 
-        nbrs = NearestNeighbors(n_neighbors=5, algorithm='ball_tree').fit(X_new)
+        nbrs = NearestNeighbors(n_neighbors=50, algorithm='ball_tree').fit(X_new)
         distances, indices = nbrs.kneighbors(X_new)
 
         count = 0
@@ -76,16 +83,38 @@ if __name__ == '__main__':
 
         print("Impute from Neighbors")
         mat = mat.T
+        initial_mat = initial_mat.T
+
+        """X_predict = np.ones(mat.shape)*3
+        for i in range(initial_mat.shape[0]):
+            where_no_nan = ~np.isnan(initial_mat[i, :])
+            X_predict[i, where_no_nan] = initial_mat[i, where_no_nan]"""
+
+        X_predict = initial_mat.copy()
+        print(X_predict)
+
         for i in range(X_new.shape[0]):
-            print(i/X_new.shape[0])
-            for j in range(indices.shape[0]):
-                mat[i, np.isnan(mat[i, :])] = mat[j, np.isnan(mat[i, :])]
+            where_nan = np.isnan(initial_mat[i, :])
+            nn_matrix = initial_mat[indices[i], :]
+            m_vals = np.nanmean(nn_matrix[:, where_nan], axis=0)
+            # initial_mat[i, where_nan] = m_vals
+            X_predict[i, where_nan] = m_vals
+            print(f'{round(i/X_new.shape[0] * 100)}%. Sparsity: {np.count_nonzero(np.isnan(X_predict)) / (initial_mat.shape[0] * initial_mat.shape[1])}% NaNs in the data')
+            """print(initial_mat[indices[i], np.isnan(initial_mat[i, :])])
+            print(np.isnan(initial_mat[i, :]))
+            print()
+            print(initial_mat[indices[i], np.isnan(initial_mat[i, :])])
+            print(np.nanmean(initial_mat[indices[i], np.isnan(mat[i, :])]))"""
+            """for j in indices[i]:
+                #mat[i, np.isnan(mat[i, :])] = mat[j, np.isnan(mat[i, :])]
+                X_predict[i, np.isnan(mat[i, :])] = mat[j, np.isnan(mat[i, :])]"""
+            """print(mat[indices[i], np.isnan(mat[i, :])])
+            mat[i, np.isnan(mat[i, :])] = np.mean(mat[indices[i], np.isnan(mat[i, :])], axis=0)"""
             # initial_impute[i, :] = np.mean(np.vstack((initial_impute[indices[i], :], initial_impute[i, :])), axis=0)
-
-        X_predict = initial_impute
-
-        kaka(mat)
-        df = prediction_data(mat)
+        # X_predict = np.nan_to_num(X_predict)
+        X_predict = mean_user(X_predict.T).T
+        kaka(X_predict)
+        df = prediction_data(X_predict)
     
     # Calculating affinities
 
