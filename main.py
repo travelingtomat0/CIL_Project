@@ -1,121 +1,271 @@
-import os
-
+import argparse
 import pickle
+from typing import Dict, List, Union
 
 import numpy as np
+import pandas as pd
+from scipy import sparse as sps
 
-from utils.data_utils import *
+import loader
 
+import myfm
+from myfm import MyFMOrderedProbit, MyFMRegressor, RelationBlock
 
-# ------------------------------------------------
-# Global Parameter Initialisation
-# ------------------------------------------------
+from myfm.gibbs import MyFMOrderedProbit
+from myfm.utils.benchmark_data import MovieLens1MDataManager
+from myfm.utils.callbacks.libfm import (
+    LibFMLikeCallbackBase,
+    OrderedProbitCallback,
+    RegressionCallback,
+)
+from myfm.utils.encoders import CategoryValueToSparseEncoder
 
-if __name__ == '__main__':
-    if not os.path.exists(f'data_train.idx'):
-        mat = read_data(path=f'data_train.csv')
-        with open(f'data_train.idx', 'wb') as f:
-            pickle.dump(mat, f)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="""
+    This script apply the method and evaluation protocal proposed in
+    "On the Difficulty of Evaluating Baselines" paper by Rendle et al,
+    against smaller Movielens 1M dataset, using myFM.
+    """,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    parser.add_argument(
+        "-a",
+        "--algorithm",
+        type=str,
+        choices=["regression", "oprobit"],
+        default="oprobit",
+        help="specify the output type.",
+    )
+    parser.add_argument(
+        "-i", "--iteration", type=int, help="mcmc iteration", default=600
+    )
+    parser.add_argument(
+        "-d", "--dimension", type=int, help="fm embedding dimension", default=18
+    )
+    parser.add_argument(
+        "--stricter_protocol",
+        action="store_true",
+        help="Whether to use the \"stricter\" protocol (i.e., don't include the test set implicit information) stated in [Rendle, '19].",
+        default=True,
+    )
+    parser.add_argument(
+        "-f",
+        "--feature",
+        type=str,
+        choices=["mf", "svdpp", "timesvd", "timesvdpp", "timesvdpp_flipped"],
+        help="feature set used in the experiment.",
+        default="timesvdpp_flipped",
+    )
+    args = parser.parse_args()
+
+    random_seed = 42
+
+    # Additional features.
+    # We add
+    # 1. date of evaluation as categorical variables
+    # 2. "all users who have evaluated a movie in the train set" or
+    # 3. "all movies rated by a user" as a feature of user/movie.
+    if args.feature == "mf":
+        use_date = False
+        use_iu = False
+        use_ii = False
+    elif args.feature == "svdpp":
+        use_date = False
+        use_iu = True
+        use_ii = False
+    elif args.feature == "timesvd":
+        use_date = False
+        use_iu = False
+        use_ii = False
+    elif args.feature == "timesvdpp":
+        use_date = False
+        use_iu = True
+        use_ii = False
+    elif args.feature == "timesvdpp_flipped":
+        use_date = False  # use date info or not
+        use_iu = True  # use implicit user feature
+        use_ii = True  # use implicit item feature
     else:
-        print(f"Loading old matrix from data_train.idx")
-        mat = np.load(f'data_train.idx', allow_pickle=True)
-    print(f'Sparsity: {np.count_nonzero(np.isnan(mat)) / (mat.shape[0]*mat.shape[1])}% NaNs in the data')
-    print(f'Ouput matric of shape {mat.shape}')
+        raise ValueError("unknown feature set specified.")
 
-    # data, val_data = torch.utils.data.random_split(InputDataset(mat), [6000, 4000])
+    FOLD_INDEX = 0
+    ITERATION = args.iteration
+    DIMENSION = args.dimension
+    if FOLD_INDEX < 0 or FOLD_INDEX >= 10:
+        raise ValueError("fold_index must be in the range(10).")
+    ALGORITHM = args.algorithm
+    #data_manager = MovieLens1MDataManager()
+    ind = np.load("data_train.npy")
+    #ind = np.hstack((ind, np.tile("2020-12-12 01:01:01", (ind.shape[0], 1))))
+    """
+    np.random.seed(42)
+    mask = np.random.rand(ind.shape[0]) < 0.9
+    train_ind = ind[mask]
+    test_ind = ind[~mask]
 
-    t_matrix, v_matrix = read_train_val(path=f'data_train.csv')
+    df_train = pd.DataFrame(train_ind, columns=["user_id", "movie_id", "rating"])
+    df_test = pd.DataFrame(test_ind, columns=["user_id", "movie_id", "rating"])
+    """
 
-    print(t_matrix.shape, v_matrix.shape)
+    ind = np.load("data_train.npy")
+    ind_sub = np.load("sampleSubmission.npy")
+    ind_all = np.vstack((ind, ind_sub))
 
-    # Information Gathering
-    # Threshold here: 1% of the data.
-    thresh_num_ratings_user = 10 # Different for users and items?
-    thresh_num_ratings_item = 100
-    user_count = 0
-    item_count = 0
+    df_train = pd.DataFrame(ind, columns=["user_id", "movie_id", "rating"])
+    df_test = pd.DataFrame(ind_all, columns=["user_id", "movie_id", "rating"])
 
-    user_nans = []
-    item_nans = []
-    for c in range(mat.shape[1]):
-        user_nans.append(np.count_nonzero(~np.isnan(mat[:, c])))
-        if np.count_nonzero(~np.isnan(mat[:, c])) < thresh_num_ratings_user:
-            user_count = user_count + 1
-    for i in range(mat.shape[0]):
-        item_nans.append(np.count_nonzero(~np.isnan(mat[i, :])))
-        if np.count_nonzero(~np.isnan(mat[i, :])) < thresh_num_ratings_item:
-            item_count = item_count + 1
+    if ALGORITHM == "oprobit":
+        # interpret the rating (1, 2, 3, 4, 5) as class (0, 1, 2, 3, 4).
+        for df_ in [df_train, df_test]:
+            df_["rating"] -= 1
+            df_["rating"] = df_.rating.astype(np.int32)
 
-    print(f"Number of users with <{thresh_num_ratings_user} recorded ratings: {user_count}")
-    print(f"Number of items with <{thresh_num_ratings_item} recorded ratings: {item_count}")
+    if args.stricter_protocol:
+        implicit_data_source = df_train
+    else:
+        implicit_data_source = pd.concat([df_train, df_test])
 
-    if os.path.exists("wixxpisse123.txt"):
-        from kakawasser import kaka
-        kaka(mat)
-    elif os.path.exists("its_me.txt"):
-        pass
-        import magic
-        from kakawasser import kaka
-        from scipy.spatial.distance import pdist, squareform
-        from sklearn.decomposition import TruncatedSVD
-        from sklearn.neighbors import NearestNeighbors
-        from sklearn.metrics import mean_squared_error
+    user_to_internal = CategoryValueToSparseEncoder[int](
+        implicit_data_source.user_id.values
+    )
+    movie_to_internal = CategoryValueToSparseEncoder[int](
+        implicit_data_source.movie_id.values
+    )
 
-        # TODO: Look at initial impute! Is there a better method?
+    print(
+        "df_train.shape = {}, df_test.shape = {}".format(df_train.shape, df_test.shape)
+    )
 
-        kaka(mat.T, 'initial_matrix_vis.png')
+    movie_vs_watched: Dict[int, List[int]] = dict()
+    user_vs_watched: Dict[int, List[int]] = dict()
 
-        initial_mat = mat.copy()
-        initial_impute = mean_user(mat).T
-        svd = TruncatedSVD(n_components=20, n_iter=7, random_state=42)
-        X_new = svd.fit_transform(initial_impute)
+    for row in implicit_data_source.itertuples():
+        user_id = row.user_id
+        movie_id = row.movie_id
+        movie_vs_watched.setdefault(movie_id, list()).append(user_id)
+        user_vs_watched.setdefault(user_id, list()).append(movie_id)
 
-        nbrs = NearestNeighbors(n_neighbors=50, algorithm='ball_tree').fit(X_new)
-        distances, indices = nbrs.kneighbors(X_new)
+    X_date_train, X_date_test = (None, None)
 
-        count = 0
-        error = 0
-        """for i in range(X_new.shape[0]):
-            for j in indices[i]:
-                error = error + mean_squared_error(initial_impute[i, :], initial_impute[j, :])
-                count = count + 1
-        print(error / count)"""
+    # setup grouping
+    feature_group_sizes = []
 
-        print("Impute from Neighbors")
-        mat = mat.T
-        initial_mat = initial_mat.T
+    feature_group_sizes.append(len(user_to_internal))  # user ids
 
-        """X_predict = np.ones(mat.shape)*3
-        for i in range(initial_mat.shape[0]):
-            where_no_nan = ~np.isnan(initial_mat[i, :])
-            X_predict[i, where_no_nan] = initial_mat[i, where_no_nan]"""
+    if use_iu:
+        # all movies which a user watched
+        feature_group_sizes.append(len(movie_to_internal))
 
-        X_predict = initial_mat.copy()
-        print(X_predict)
+    feature_group_sizes.append(len(movie_to_internal))  # movie ids
 
-        for i in range(X_new.shape[0]):
-            where_nan = np.isnan(initial_mat[i, :])
-            nn_matrix = initial_mat[indices[i], :]
-            m_vals = np.nanmean(nn_matrix[:, where_nan], axis=0)
-            # initial_mat[i, where_nan] = m_vals
-            X_predict[i, where_nan] = m_vals
-            print(f'{round(i/X_new.shape[0] * 100)}%. Sparsity: {np.count_nonzero(np.isnan(X_predict)) / (initial_mat.shape[0] * initial_mat.shape[1])}% NaNs in the data')
-            """print(initial_mat[indices[i], np.isnan(initial_mat[i, :])])
-            print(np.isnan(initial_mat[i, :]))
-            print()
-            print(initial_mat[indices[i], np.isnan(initial_mat[i, :])])
-            print(np.nanmean(initial_mat[indices[i], np.isnan(mat[i, :])]))"""
-            """for j in indices[i]:
-                #mat[i, np.isnan(mat[i, :])] = mat[j, np.isnan(mat[i, :])]
-                X_predict[i, np.isnan(mat[i, :])] = mat[j, np.isnan(mat[i, :])]"""
-            """print(mat[indices[i], np.isnan(mat[i, :])])
-            mat[i, np.isnan(mat[i, :])] = np.mean(mat[indices[i], np.isnan(mat[i, :])], axis=0)"""
-            # initial_impute[i, :] = np.mean(np.vstack((initial_impute[indices[i], :], initial_impute[i, :])), axis=0)
-        # X_predict = np.nan_to_num(X_predict)
-        X_predict = mean_user(X_predict.T).T
-        kaka(X_predict)
-        df = prediction_data(X_predict)
-    
-    # Calculating affinities
+    if use_ii:
+        feature_group_sizes.append(
+            len(user_to_internal)  # all the users who watched a movies
+        )
 
-    # TODO: Implement in methods
+    grouping = [i for i, size in enumerate(feature_group_sizes) for _ in range(size)]
+
+    def augment_user_id(user_ids: List[int]) -> sps.csr_matrix:
+        X = user_to_internal.to_sparse(user_ids)
+        if not use_iu:
+            return X
+        data: List[float] = []
+        row: List[int] = []
+        col: List[int] = []
+        for index, user_id in enumerate(user_ids):
+            watched_movies = user_vs_watched.get(user_id, [])
+            normalizer = 1 / max(len(watched_movies), 1) ** 0.5
+            for mid in watched_movies:
+                data.append(normalizer)
+                col.append(movie_to_internal._get_index(mid))
+                row.append(index)
+        return sps.hstack(
+            [
+                X,
+                sps.csr_matrix(
+                    (data, (row, col)),
+                    shape=(len(user_ids), len(movie_to_internal)),
+                ),
+            ],
+            format="csr",
+        )
+
+    def augment_movie_id(movie_ids: List[int]):
+        X = movie_to_internal.to_sparse(movie_ids)
+        if not use_ii:
+            return X
+
+        data: List[float] = []
+        row: List[int] = []
+        col: List[int] = []
+
+        for index, movie_id in enumerate(movie_ids):
+            watched_users = movie_vs_watched.get(movie_id, [])
+            normalizer = 1 / max(len(watched_users), 1) ** 0.5
+            for uid in watched_users:
+                data.append(normalizer)
+                row.append(index)
+                col.append(user_to_internal._get_index(uid))
+        return sps.hstack(
+            [
+                X,
+                sps.csr_matrix(
+                    (data, (row, col)),
+                    shape=(len(movie_ids), len(user_to_internal)),
+                ),
+            ]
+        )
+
+    # Create RelationBlock.
+    train_blocks: List[RelationBlock] = []
+    test_blocks: List[RelationBlock] = []
+    for source, target in [(df_train, train_blocks), (df_test, test_blocks)]:
+        unique_users, user_map = np.unique(source.user_id, return_inverse=True)
+        target.append(RelationBlock(user_map, augment_user_id(unique_users)))
+        unique_movies, movie_map = np.unique(source.movie_id, return_inverse=True)
+        target.append(RelationBlock(movie_map, augment_movie_id(unique_movies)))
+
+    trace_path = "rmse_{0}_fold_{1}.csv".format(ALGORITHM, FOLD_INDEX)
+
+    callback: LibFMLikeCallbackBase
+    fm: Union[MyFMRegressor, MyFMOrderedProbit, myfm.VariationalFMRegressor]
+    if ALGORITHM == "regression":
+        fm = myfm.MyFMRegressor(rank=DIMENSION)
+        callback = RegressionCallback(
+            ITERATION,
+            X_date_test,
+            df_test.rating.values,
+            X_rel_test=test_blocks,
+            clip_min=0.5,
+            clip_max=5.0,
+            trace_path=trace_path,
+        )
+    else:
+        fm = myfm.MyFMOrderedProbit(rank=DIMENSION)
+        callback = OrderedProbitCallback(
+            ITERATION,
+            X_date_test,
+            df_test.rating.values,
+            n_class=5,
+            X_rel_test=test_blocks,
+            trace_path=trace_path,
+        )
+
+    fm.fit(
+        X_date_train,
+        df_train.rating.values,
+        X_rel=train_blocks,
+        grouping=grouping,
+        n_iter=callback.n_iter,
+        #callback=callback,
+        #n_kept_samples=1,
+    )
+
+    np.save("predictions_ogit_fm2", fm.predict_proba(X_date_test, X_rel=test_blocks))
+
+    with open(
+        "callback_result_{0}_fold_{1}.pkl".format(ALGORITHM, FOLD_INDEX), "wb"
+    ) as ofs:
+        pickle.dump(callback, ofs)
