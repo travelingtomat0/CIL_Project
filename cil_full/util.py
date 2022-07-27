@@ -4,6 +4,13 @@ import sklearn.model_selection
 import tqdm
 import os.path
 
+# Imports for cluster label generation:
+from sklearn.decomposition import PCA
+import umap
+import matplotlib.pyplot as plt
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.impute import SimpleImputer
+
 
 def load_indices(file):
     """
@@ -70,3 +77,27 @@ def rmse(y_true, y_pred):
     Computes the root-mean-squared-error.
     """
     return np.sqrt(np.mean(np.square(y_true - y_pred)))
+
+
+def cluster_prep(idx, mean_impute=False):
+    """
+    Computes item-labels for the cluster_AE model.
+    """
+    print("Prepare Labels for ClusterAE...")
+    mat = indices_to_matrix(idx).T
+    pca = PCA(n_components=25)
+
+    imp_mean = SimpleImputer(missing_values=0, strategy='mean')
+    mat = np.nan_to_num(mat)
+    if mean_impute:
+        mat = imp_mean.fit_transform(mat)
+    reduced_mat = pca.fit_transform(mat)
+    embedding = umap.UMAP(metric='correlation').fit_transform(reduced_mat)
+
+    clustering = AgglomerativeClustering(n_clusters=2).fit_predict(embedding)
+
+    # Save clustering plot for validation purposes.
+    plt.figure(figsize=(10, 10))
+    plt.scatter(embedding[:, 0], embedding[:, 1], c=clustering, cmap='Spectral')
+    plt.savefig("temp/item_clusters.jpg")
+    np.save("input/cluster_map.npy", np.asarray(clustering))

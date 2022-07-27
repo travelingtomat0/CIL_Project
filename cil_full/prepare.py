@@ -20,6 +20,7 @@ def run():
     """
     print("Loading training data...")
     idx = util.load_indices("input/data_train.csv")
+    util.cluster_prep(idx, mean_impute=False)
 
     print("Generating folds...")
     for i, (train_idx, val_idx) in enumerate(get_crossval_data(idx)):
