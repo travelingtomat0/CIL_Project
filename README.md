@@ -7,4 +7,4 @@ Goal of the project was implementing and testing a movie recommendation system b
 # Model
 Our proposed model implements multiple machine learning models (deep learning architectures, probabilistic LSA models, standard data imputation methods) in a stacked ensemble methods.
 
-Model weights of the ensemble are learned using non-convex optimization on a constrained loss function. For more information on the model and evaluation, see our attached paper.
+Model weights of the ensemble are learned using non-convex optimization on a constrained loss function. For more information on the model and evaluation, see our attached [PAPER](https://github.com/travelingtomat0/CIL_Project/blob/master/paper-1.pdf).
